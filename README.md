@@ -1,5 +1,6 @@
 # gobuster
-Directory/File, DNS and VHost busting tool written in Go
+This a modified version of gobuster I started working on from commit 577ceaaa28
 
+# Changes
 WIP
 
