@@ -1,277 +1,326 @@
 package gobusterdir
 
 import (
-	"bufio"
 	"bytes"
-	"context"
 	"fmt"
 	"log"
+	"math/rand"
+	"net/url"
+	"regexp"
 	"strings"
-	"text/tabwriter"
+	"time"
 
-	"github.com/OJ/gobuster/v3/libgobuster"
+	"yBuster/libgobuster"
+
 	"github.com/google/uuid"
 )
 
 // GobusterDir is the main type to implement the interface
-type GobusterDir struct {
-	options    *OptionsDir
-	globalopts *libgobuster.Options
-	http       *httpClient
-}
+type GobusterDir struct{}
 
-// GetRequest issues a GET request to the target and returns
-// the status code, length and an error
-func (d *GobusterDir) get(url string) (*int, *int64, error) {
-	return d.http.makeRequest(url, d.options.Cookies)
-}
-
-// NewGobusterDir creates a new initialized GobusterDir
-func NewGobusterDir(cont context.Context, globalopts *libgobuster.Options, opts *OptionsDir) (*GobusterDir, error) {
-	if globalopts == nil {
-		return nil, fmt.Errorf("please provide valid global options")
-	}
-
-	if opts == nil {
-		return nil, fmt.Errorf("please provide valid plugin options")
-	}
-
-	g := GobusterDir{
-		options:    opts,
-		globalopts: globalopts,
-	}
-	h, err := newHTTPClient(cont, opts)
+// Setup is the setup implementation of gobusterdir
+func (d GobusterDir) Setup(g *libgobuster.Gobuster) error {
+	_, _, _, _, err := g.GetRequest(g.Opts.URL)
 	if err != nil {
-		return nil, err
-	}
-	g.http = h
-	return &g, nil
-}
-
-// PreRun is the pre run implementation of gobusterdir
-func (d *GobusterDir) PreRun() error {
-	// add trailing slash
-	if !strings.HasSuffix(d.options.URL, "/") {
-		d.options.URL = fmt.Sprintf("%s/", d.options.URL)
+		return fmt.Errorf("unable to connect to %s: %v", g.Opts.URL, err)
 	}
 
-	_, _, err := d.get(d.options.URL)
-	if err != nil {
-		return fmt.Errorf("unable to connect to %s: %v", d.options.URL, err)
+	r := regexp.MustCompile(`(?s).*<title>(?P<Title>.*)<\/title>.*`)
+	g.WildcardStatusCode = new(int)
+
+	uuidFile16 := strings.ReplaceAll(uuid.New().String(), "-", "")[0:16]
+	urlFile16 := fmt.Sprintf("%s%s", g.Opts.URL, uuidFile16)
+	wildcardRespFile16, _, wildcardContentFile16, _, errFile16 := g.GetRequest(urlFile16)
+	if errFile16 != nil {
+		return errFile16
+	}
+	cleanWildcardContentFile16 := strings.ReplaceAll(*wildcardContentFile16, urlFile16, "")
+	rsFile16 := r.FindStringSubmatch(*wildcardContentFile16)
+	cleanTitleFile16 := ""
+	if len(rsFile16) > 0 {
+		cleanTitleFile16 = strings.TrimSpace(rsFile16[1])
 	}
 
-	guid := uuid.New()
-	url := fmt.Sprintf("%s%s", d.options.URL, guid)
-	wildcardResp, _, err := d.get(url)
-	if err != nil {
-		return err
+	uuidFile8 := strings.ReplaceAll(uuid.New().String(), "-", "")[0:8]
+	urlFile8 := fmt.Sprintf("%s%s", g.Opts.URL, uuidFile8)
+	wildcardRespFile8, _, wildcardContentFile8, _, errFile8 := g.GetRequest(urlFile8)
+	if errFile8 != nil {
+		return errFile8
+	}
+	cleanWildcardContentFile8 := strings.ReplaceAll(*wildcardContentFile8, urlFile8, "")
+	rsFile8 := r.FindStringSubmatch(*wildcardContentFile8)
+	cleanTitleFile8 := ""
+	if len(rsFile8) > 0 {
+		cleanTitleFile8 = strings.TrimSpace(rsFile8[1])
 	}
 
-	if d.options.StatusCodesParsed.Contains(*wildcardResp) {
-		d.options.IsWildcard = true
-		log.Printf("[-] Wildcard response found: %s => %d", url, *wildcardResp)
-		if !d.options.WildcardForced {
-			return fmt.Errorf("To force processing of Wildcard responses, specify the '--wildcard' switch.")
+	if *wildcardRespFile16 == *wildcardRespFile8 {
+		g.WildcardStatusCode = wildcardRespFile16
+		log.Printf("[-] Wildcard response found: %s => %d", urlFile16, *wildcardRespFile16)
+		log.Printf("[-] Wildcard response found: %s => %d", urlFile8, *wildcardRespFile8)
+		if cleanTitleFile16 != "" && cleanTitleFile16 == cleanTitleFile8 {
+			g.IsWildcardFileByTitle = true
+			g.WildcardFileTitle = cleanTitleFile16
+			log.Printf(" --> Wildcard by title: %s", cleanTitleFile16)
+		} else if len(cleanWildcardContentFile16) == len(cleanWildcardContentFile8) {
+			g.IsWildcardFileByContentLength = true
+			g.WildcardFileContentLength = len(cleanWildcardContentFile16)
+			log.Printf(" --> Wildcard by content length: %d", len(cleanWildcardContentFile16))
 		}
+	} else {
+		log.Printf("[-] Wildcard response NOT found: %s => %d", urlFile16, *wildcardRespFile16)
+		log.Printf("[-] Wildcard response NOT found: %s => %d", urlFile8, *wildcardRespFile8)
+	}
+
+	uuidDir16 := fmt.Sprintf("%s%s", strings.ReplaceAll(uuid.New().String(), "-", "")[0:15], "/")
+	urlDir16 := fmt.Sprintf("%s%s", g.Opts.URL, uuidDir16)
+	wildcardRespDir16, _, wildcardContentDir16, _, errDir16 := g.GetRequest(urlDir16)
+	if errDir16 != nil {
+		return errDir16
+	}
+	cleanWildcardContentDir16 := strings.ReplaceAll(*wildcardContentDir16, urlDir16, "")
+	rsDir16 := r.FindStringSubmatch(*wildcardContentDir16)
+	cleanTitleDir16 := ""
+	if len(rsDir16) > 0 {
+		cleanTitleDir16 = strings.TrimSpace(rsDir16[1])
+	}
+
+	uuidDir8 := fmt.Sprintf("%s%s", strings.ReplaceAll(uuid.New().String(), "-", "")[0:7], "/")
+	urlDir8 := fmt.Sprintf("%s%s", g.Opts.URL, uuidDir8)
+	wildcardRespDir8, _, wildcardContentDir8, _, errDir8 := g.GetRequest(urlDir8)
+	if errDir8 != nil {
+		return errDir8
+	}
+	cleanWildcardContentDir8 := strings.ReplaceAll(*wildcardContentDir8, urlDir8, "")
+	rsDir8 := r.FindStringSubmatch(*wildcardContentDir8)
+	cleanTitleDir8 := ""
+	if len(rsDir8) > 0 {
+		cleanTitleDir8 = strings.TrimSpace(rsDir8[1])
+	}
+
+	if *wildcardRespDir16 == *wildcardRespDir8 {
+		g.WildcardStatusCode = wildcardRespDir16
+		log.Printf("[-] Wildcard response found: %s => %d", urlDir16, *wildcardRespDir16)
+		log.Printf("[-] Wildcard response found: %s => %d", urlDir8, *wildcardRespDir8)
+		if cleanTitleDir16 != "" && cleanTitleDir16 == cleanTitleDir8 {
+			g.IsWildcardDirByTitle = true
+			g.WildcardDirTitle = cleanTitleDir16
+			log.Printf(" --> Wildcard by title: %s", cleanTitleDir16)
+		} else if len(cleanWildcardContentDir16) == len(cleanWildcardContentDir8) {
+			g.IsWildcardDirByContentLength = true
+			g.WildcardDirContentLength = len(cleanWildcardContentDir16)
+			log.Printf(" --> Wildcard by content length: %d", len(cleanWildcardContentDir16))
+		}
+	} else {
+		log.Printf("[-] Wildcard response NOT found: %s => %d", urlDir16, *wildcardRespDir16)
+		log.Printf("[-] Wildcard response NOT found: %s => %d", urlDir8, *wildcardRespDir8)
 	}
 
 	return nil
 }
 
-// Run is the process implementation of gobusterdir
-func (d *GobusterDir) Run(word string) ([]libgobuster.Result, error) {
+// Process is the process implementation of gobusterdir
+func (d GobusterDir) Process(g *libgobuster.Gobuster, busterTarget *libgobuster.BusterTarget) ([]libgobuster.Result, error) {
 	suffix := ""
-	if d.options.UseSlash {
+	if g.Opts.UseSlash {
 		suffix = "/"
 	}
 
-	// Try the DIR first
-	url := fmt.Sprintf("%s%s%s", d.options.URL, word, suffix)
-	dirResp, dirSize, err := d.get(url)
+	entity := busterTarget.Target
+	isEntityURL := true
+	url := entity
+	var ret []libgobuster.Result
+
+	if !busterTarget.IsURL {
+		word := strings.TrimPrefix(busterTarget.Target, "/")
+		entity = fmt.Sprintf("%s%s", word, suffix)
+		isEntityURL = false
+		url = fmt.Sprintf("%s%s", g.Opts.URL, entity)
+	}
+
+	if len(g.Opts.RandomAgentParsed) > 0 {
+		rand.Seed(time.Now().UTC().UnixNano())
+		randomAgent := g.Opts.RandomAgentParsed[rand.Intn(len(g.Opts.RandomAgentParsed))]
+		g.HTTP.UserAgent = randomAgent
+	}
+
+	dirResp, dirSize, dirContent, redirectURL, err := g.GetRequest(url)
 	if err != nil {
 		return nil, err
 	}
-	var ret []libgobuster.Result
+
 	if dirResp != nil {
 		ret = append(ret, libgobuster.Result{
-			Entity: fmt.Sprintf("%s%s", word, suffix),
-			Status: *dirResp,
-			Size:   dirSize,
+			Entity:      entity,
+			Status:      *dirResp,
+			Size:        dirSize,
+			Content:     dirContent,
+			IsEntityURL: isEntityURL,
+			RedirectURL: redirectURL,
 		})
 	}
 
-	// Follow up with files using each ext.
-	for ext := range d.options.ExtensionsParsed.Set {
-		file := fmt.Sprintf("%s.%s", word, ext)
-		url = fmt.Sprintf("%s%s", d.options.URL, file)
-		fileResp, fileSize, err := d.get(url)
-		if err != nil {
-			return nil, err
-		}
-
-		if fileResp != nil {
-			ret = append(ret, libgobuster.Result{
-				Entity: file,
-				Status: *fileResp,
-				Size:   fileSize,
-			})
-		}
-	}
 	return ret, nil
 }
 
 // ResultToString is the to string implementation of gobusterdir
-func (d *GobusterDir) ResultToString(r *libgobuster.Result) (*string, error) {
+func (d GobusterDir) ResultToString(g *libgobuster.Gobuster, r *libgobuster.Result) (*string, *string, int, error) {
 	buf := &bytes.Buffer{}
+	allBuf := &bytes.Buffer{}
+	isFalsePositive := false
+	isDir := strings.HasSuffix(r.Entity, "/")
+	rgx := regexp.MustCompile(`(?s).*<title>(?P<Title>.*)<\/title>.*`)
 
-	// Prefix if we're in verbose mode
-	if d.globalopts.Verbose {
-		if d.options.StatusCodesParsed.Contains(r.Status) {
-			if _, err := fmt.Fprintf(buf, "Found: "); err != nil {
-				return nil, err
+	if r.Status == *g.WildcardStatusCode {
+		if isDir {
+			if g.IsWildcardDirByTitle {
+				rsDir := rgx.FindStringSubmatch(*r.Content)
+				cleanTitleDir := ""
+				if len(rsDir) > 0 {
+					cleanTitleDir = strings.TrimSpace(rsDir[1])
+					if cleanTitleDir == g.WildcardDirTitle {
+						isFalsePositive = true
+					}
+				}
+			} else if g.IsWildcardDirByContentLength {
+				entity := r.Entity
+				if !r.IsEntityURL {
+					entity = fmt.Sprintf("%s%s", g.Opts.URL, entity)
+				}
+				cleanWildcardContentDir := strings.ReplaceAll(*r.Content, entity, "")
+				if len(cleanWildcardContentDir) == g.WildcardDirContentLength {
+					isFalsePositive = true
+				}
 			}
 		} else {
-			if _, err := fmt.Fprintf(buf, "Missed: "); err != nil {
-				return nil, err
+			if g.IsWildcardFileByTitle {
+				rsFile := rgx.FindStringSubmatch(*r.Content)
+				cleanTitleFile := ""
+				if len(rsFile) > 0 {
+					cleanTitleFile = strings.TrimSpace(rsFile[1])
+					if cleanTitleFile == g.WildcardFileTitle {
+						isFalsePositive = true
+					}
+				}
+			} else if g.IsWildcardFileByContentLength {
+				entity := r.Entity
+				if !r.IsEntityURL {
+					entity = fmt.Sprintf("%s%s", g.Opts.URL, entity)
+				}
+				cleanWildcardContentFile := strings.ReplaceAll(*r.Content, entity, "")
+				if len(cleanWildcardContentFile) == g.WildcardFileContentLength {
+					isFalsePositive = true
+				}
 			}
 		}
 	}
 
-	if d.options.StatusCodesParsed.Contains(r.Status) || d.globalopts.Verbose {
-		if d.options.Expanded {
-			if _, err := fmt.Fprintf(buf, "%s", d.options.URL); err != nil {
-				return nil, err
+	hasExcludeString := false
+	if g.Opts.ExcludeString != "" {
+		hasExcludeString = strings.Contains(*r.Content, g.Opts.ExcludeString)
+	}
+
+	// Prefix if we're in verbose mode
+	if g.Opts.Verbose {
+		if isFalsePositive {
+			if _, err := fmt.Fprintf(buf, "%-16s", "FALSE POSITIVE"); err != nil {
+				return nil, nil, 0, err
+			}
+		} else if !g.Opts.ExcludedStatusCodesParsed.Contains(r.Status) && !hasExcludeString {
+			if _, err := fmt.Fprintf(buf, "%-16s", "FOUND"); err != nil {
+				return nil, nil, 0, err
 			}
 		} else {
-			if _, err := fmt.Fprintf(buf, "/"); err != nil {
-				return nil, err
+			if _, err := fmt.Fprintf(buf, "%-16s", "MISSED"); err != nil {
+				return nil, nil, 0, err
 			}
 		}
-		if _, err := fmt.Fprintf(buf, "%s", r.Entity); err != nil {
-			return nil, err
+	}
+
+	t := time.Now()
+	if !g.Opts.ExcludedStatusCodesParsed.Contains(r.Status) && !isFalsePositive && !hasExcludeString || g.Opts.Verbose {
+		if _, err := fmt.Fprintf(buf, "[%02d:%02d:%02d]", t.Hour(), t.Minute(), t.Second()); err != nil {
+			return nil, nil, 0, err
 		}
 
-		if !d.options.NoStatus {
-			if _, err := fmt.Fprintf(buf, " (Status: %d)", r.Status); err != nil {
-				return nil, err
-			}
+		if _, err := fmt.Fprintf(buf, "%8d", r.Status); err != nil {
+			return nil, nil, 0, err
 		}
 
 		if r.Size != nil {
-			if _, err := fmt.Fprintf(buf, " [Size: %d]", *r.Size); err != nil {
-				return nil, err
+			if _, err := fmt.Fprintf(buf, "%12d B", *r.Size); err != nil {
+				return nil, nil, 0, err
+			}
+		} else {
+			if _, err := fmt.Fprintf(buf, "%12d B", 0); err != nil {
+				return nil, nil, 0, err
 			}
 		}
+
+		if _, err := fmt.Fprintf(buf, "     -     "); err != nil {
+			return nil, nil, 0, err
+		}
+
+		if !r.IsEntityURL {
+			if _, err := fmt.Fprintf(buf, "%s", g.Opts.URL); err != nil {
+				return nil, nil, 0, err
+			}
+		}
+
+		if _, err := fmt.Fprintf(buf, "%s", r.Entity); err != nil {
+			return nil, nil, 0, err
+		}
+
+		if *r.RedirectURL != "" {
+			if _, err := fmt.Fprintf(buf, "  ->  "); err != nil {
+				return nil, nil, 0, err
+			}
+
+			if _, err := fmt.Fprintf(buf, "%s", *r.RedirectURL); err != nil {
+				return nil, nil, 0, err
+			}
+		}
+
 		if _, err := fmt.Fprintf(buf, "\n"); err != nil {
-			return nil, err
+			return nil, nil, 0, err
+		}
+
+		if _, err := fmt.Fprintf(allBuf, "[%d-%02d-%02d %02d:%02d:%02d] - ", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second()); err != nil {
+			return nil, nil, 0, err
+		}
+
+		allBufEntity := r.Entity
+		if r.IsEntityURL {
+			u, err := url.Parse(allBufEntity)
+			if err == nil {
+				schemeHost := fmt.Sprintf("%s://%s/", u.Scheme, u.Host)
+				allBufEntity = strings.ReplaceAll(allBufEntity, schemeHost, "")
+			}
+		}
+
+		if _, err := fmt.Fprintf(allBuf, "/%s - ", allBufEntity); err != nil {
+			return nil, nil, 0, err
+		}
+
+		if _, err := fmt.Fprintf(allBuf, "%d", r.Status); err != nil {
+			return nil, nil, 0, err
+		}
+
+		if *r.RedirectURL != "" {
+			if _, err := fmt.Fprintf(allBuf, "  ->  "); err != nil {
+				return nil, nil, 0, err
+			}
+
+			if _, err := fmt.Fprintf(allBuf, "%s", *r.RedirectURL); err != nil {
+				return nil, nil, 0, err
+			}
+		}
+
+		if _, err := fmt.Fprintf(allBuf, "\n"); err != nil {
+			return nil, nil, 0, err
 		}
 	}
 	s := buf.String()
-	return &s, nil
-}
-
-// GetConfigString returns the string representation of the current config
-func (d *GobusterDir) GetConfigString() (string, error) {
-	var buffer bytes.Buffer
-	bw := bufio.NewWriter(&buffer)
-	tw := tabwriter.NewWriter(bw, 0, 5, 3, ' ', 0)
-	o := d.options
-	if _, err := fmt.Fprintf(tw, "[+] Url:\t%s\n", o.URL); err != nil {
-		return "", err
-	}
-	if _, err := fmt.Fprintf(tw, "[+] Threads:\t%d\n", d.globalopts.Threads); err != nil {
-		return "", err
-	}
-
-	wordlist := "stdin (pipe)"
-	if d.globalopts.Wordlist != "-" {
-		wordlist = d.globalopts.Wordlist
-	}
-	if _, err := fmt.Fprintf(tw, "[+] Wordlist:\t%s\n", wordlist); err != nil {
-		return "", err
-	}
-
-	if _, err := fmt.Fprintf(tw, "[+] Status codes:\t%s\n", o.StatusCodesParsed.Stringify()); err != nil {
-		return "", err
-	}
-
-	if o.Proxy != "" {
-		if _, err := fmt.Fprintf(tw, "[+] Proxy:\t%s\n", o.Proxy); err != nil {
-			return "", err
-		}
-	}
-
-	if o.Cookies != "" {
-		if _, err := fmt.Fprintf(tw, "[+] Cookies:\t%s\n", o.Cookies); err != nil {
-			return "", err
-		}
-	}
-
-	if o.UserAgent != "" {
-		if _, err := fmt.Fprintf(tw, "[+] User Agent:\t%s\n", o.UserAgent); err != nil {
-			return "", err
-		}
-	}
-
-	if o.IncludeLength {
-		if _, err := fmt.Fprintf(tw, "[+] Show length:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if o.Username != "" {
-		if _, err := fmt.Fprintf(tw, "[+] Auth User:\t%s\n", o.Username); err != nil {
-			return "", err
-		}
-	}
-
-	if o.Extensions != "" {
-		if _, err := fmt.Fprintf(tw, "[+] Extensions:\t%s\n", o.ExtensionsParsed.Stringify()); err != nil {
-			return "", err
-		}
-	}
-
-	if o.UseSlash {
-		if _, err := fmt.Fprintf(tw, "[+] Add Slash:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if o.FollowRedirect {
-		if _, err := fmt.Fprintf(tw, "[+] Follow Redir:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if o.Expanded {
-		if _, err := fmt.Fprintf(tw, "[+] Expanded:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if o.NoStatus {
-		if _, err := fmt.Fprintf(tw, "[+] No status:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if d.globalopts.Verbose {
-		if _, err := fmt.Fprintf(tw, "[+] Verbose:\ttrue\n"); err != nil {
-			return "", err
-		}
-	}
-
-	if _, err := fmt.Fprintf(tw, "[+] Timeout:\t%s\n", o.Timeout.String()); err != nil {
-		return "", err
-	}
-
-	if err := tw.Flush(); err != nil {
-		return "", fmt.Errorf("error on tostring: %v", err)
-	}
-
-	if err := bw.Flush(); err != nil {
-		return "", fmt.Errorf("error on tostring: %v", err)
-	}
-
-	return strings.TrimSpace(buffer.String()), nil
+	as := allBuf.String()
+	return &s, &as, r.Status, nil
 }
